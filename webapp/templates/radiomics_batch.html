@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Batch Radiomics Extraction</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  >
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='radiomics_batch.css') }}">
+</head>
+<body>
+  <header class="app-header border-bottom">
+    <div class="container py-4">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+        <div>
+          <p class="eyebrow mb-2">Radiomics test bench</p>
+          <h1 class="h2 mb-2">Batch Radiomics Extraction</h1>
+          <p class="text-secondary mb-0">
+            All 1,688 FAE/PyRadiomics features for every patient in a folder, from
+            your own VOI masks, in one CSV.
+          </p>
+        </div>
+        <div class="align-self-lg-center">
+          <a class="btn btn-outline-secondary" href="{{ url_for('index') }}">&larr; Prediction app</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container py-4 py-lg-5">
+    <div id="global-alert" class="alert d-none" role="alert"></div>
+
+    <section class="card section-card shadow-sm mb-4">
+      <div class="card-body p-4">
+        <div class="section-heading">
+          <span class="step-number">1</span>
+          <div>
+            <h2 class="h5 mb-1">Patient folders</h2>
+            <p class="text-secondary mb-0">
+              One folder per patient, holding the original Sagittal T1 NIfTI and its
+              VOI NIfTI. Centre sub-folders such as <code>TMUH\</code> and
+              <code>Wanfang\</code> are searched too.
+            </p>
+          </div>
+        </div>
+        <form class="row g-3 mt-2" id="scan-form" novalidate>
+          <div class="col-12 col-lg-7">
+            <label for="folder" class="form-label">Folder path on this computer</label>
+            <input
+              class="form-control batch-mono"
+              id="folder"
+              type="text"
+              placeholder="E:\Radiomics\Test_radiomics"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            >
+          </div>
+          <div class="col-12 col-sm-8 col-lg-3">
+            <label for="mask-pattern" class="form-label">VOI file name pattern</label>
+            <input
+              class="form-control batch-mono"
+              id="mask-pattern"
+              type="text"
+              value="*segmentation*"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <small class="field-range">Case-insensitive; separate several with commas.</small>
+          </div>
+          <div class="col-12 col-sm-4 col-lg-2">
+            <label class="form-label d-none d-sm-block" aria-hidden="true">&nbsp;</label>
+            <button class="btn btn-primary w-100" id="scan-button" type="submit">Scan folder</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card section-card shadow-sm mb-4 d-none" id="patients-card">
+      <div class="card-body p-4">
+        <div class="d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-3">
+          <div class="section-heading batch-heading">
+            <span class="step-number">2</span>
+            <div>
+              <h2 class="h5 mb-1">Patients</h2>
+              <p class="text-secondary mb-0 batch-summary" id="patients-summary"></p>
+            </div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap" id="selection-tools">
+            <button class="btn btn-sm btn-outline-secondary" type="button" id="select-ready">Tick all ready</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" id="select-none">Untick all</button>
+          </div>
+        </div>
+        <div class="batch-table-wrap mt-4">
+          <table class="table table-sm align-middle mb-0 batch-table">
+            <thead>
+              <tr>
+                <th scope="col" class="batch-check-cell">
+                  <input class="form-check-input" type="checkbox" id="select-all" aria-label="Tick every patient that has both files">
+                </th>
+                <th scope="col">Patient</th>
+                <th scope="col">Centre</th>
+                <th scope="col">Image</th>
+                <th scope="col">VOI</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody id="patients-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card section-card shadow-sm mb-4 d-none" id="run-card">
+      <div class="card-body p-4">
+        <div class="section-heading">
+          <span class="step-number">3</span>
+          <div>
+            <h2 class="h5 mb-1">Extract and save</h2>
+            <p class="text-secondary mb-0">
+              Same PyRadiomics worker and FAE configuration as the prediction app,
+              with every feature kept instead of the model's selection.
+            </p>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-12 col-lg-9">
+            <label for="output-csv" class="form-label">Output CSV</label>
+            <input
+              class="form-control batch-mono"
+              id="output-csv"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <small class="field-range">
+              <code>Name</code> + 1,688 <code>MRI_*</code> columns, in the order of
+              <code>radiomics_features_new.csv</code>. A <code>_log.csv</code> (status
+              per patient) and a <code>_settings.json</code> (PyRadiomics settings
+              and versions) are written beside it. Existing files are never overwritten.
+            </small>
+          </div>
+          <div class="col-12 col-sm-6 col-lg-3">
+            <label for="workers" class="form-label">Patients in parallel</label>
+            <input class="form-control" id="workers" type="number" min="1" step="1">
+            <small class="field-range" id="workers-note"></small>
+          </div>
+        </div>
+
+        <details class="level-picker-advanced mt-3" id="advanced">
+          <summary>Extraction settings</summary>
+          <div class="row g-3 mt-1">
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="label" class="form-label">VOI label value</label>
+              <input class="form-control" id="label" type="number" min="1" step="1">
+              <small class="field-range">Voxels with this value form the VOI.</small>
+            </div>
+            <div class="col-12 col-sm-6 col-lg-3">
+              <label for="normalize-scale" class="form-label">normalizeScale</label>
+              <input class="form-control" id="normalize-scale" type="number" min="0" step="any">
+              <small class="field-range">
+                1 reproduces the development CSV. The stored external (Wanfang) CSV
+                was extracted with 100.
+              </small>
+            </div>
+            <div class="col-12 col-lg-6">
+              <dl class="batch-settings mb-0" id="fixed-settings"></dl>
+            </div>
+          </div>
+        </details>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <button class="btn btn-primary btn-lg" id="start-button" type="button" disabled>
+            Extract radiomics
+          </button>
+          <button class="btn btn-outline-danger btn-lg d-none" id="cancel-button" type="button">
+            Cancel
+          </button>
+        </div>
+        <div class="upload-status mt-3 d-none" id="job-status" aria-live="polite"></div>
+        <div class="batch-result mt-3 d-none" id="job-result"></div>
+      </div>
+    </section>
+
+    <p class="research-note mt-4 mb-0">
+      Research use only. Features are only comparable with the training data when the
+      VOI is drawn the same way as the training masks.
+    </p>
+  </main>
+
+  <script src="{{ url_for('static', filename='radiomics_batch.js') }}" defer></script>
+</body>
+</html>

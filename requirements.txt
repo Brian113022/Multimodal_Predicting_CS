@@ -1,0 +1,51 @@
+numpy>=1.24
+pandas>=2.0
+scipy>=1.10
+scikit-learn>=1.3
+imbalanced-learn>=0.11
+matplotlib>=3.7
+shap>=0.44
+xgboost>=2.0
+lightgbm>=4.0
+interpret>=0.7.8
+optuna>=3.5
+jupyterlab>=4.0
+ipykernel>=6.0
+openpyxl>=3.1
+PyYAML>=6.0
+joblib>=1.3
+Flask>=3.0
+pydicom>=3.0,<4
+dcm2niix>=1.0.20250506
+# Decodes compressed DICOM before dcm2niix, whose own JPEG Lossless decoder
+# rejects the restart intervals some PACS exports use.
+python-gdcm>=3.0
+# PyRadiomics is deliberately NOT installed here. It has no wheel, its
+# setup.py imports numpy before the build environment has it, and it needs
+# numpy<2 - installing it would downgrade the numpy 2.x the ML pipeline
+# uses. Only webapp/extractors/fae_worker.py imports it, and that worker
+# runs under RADIOMICS_PYTHON, which webapp/config.py finds on its own.
+# The working install is pyradiomics 3.1.0 on Python 3.9 (conda env radiomm).
+SimpleITK>=2.4,<3
+PyWavelets>=1.5
+scikit-image>=0.22
+trimesh>=4.0
+nibabel>=5.2
+
+# TotalSegmentator segmentation for the web app's Radiomics VOI.
+#
+# The torch pin carries the "+cu118" local version on purpose. PyPI's Windows
+# torch wheel is CPU-only, and under PEP 440 a plain "torch==2.5.1" is already
+# satisfied by an installed "2.5.1+cpu" - so the plain pin installs nothing and
+# TotalSegmentator silently falls back to the CPU, which costs minutes per case.
+# Naming the local version forces the CUDA wheel from PyTorch's own index.
+#
+# No NVIDIA GPU? Replace the two pinned lines with matching CPU torch and
+# torchvision builds and start the app with TOTALSEGMENTATOR_REQUIRE_GPU=0.
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.5.1+cu118
+torchvision==0.20.1+cu118
+# Pin the official repository revision. The PyPI 2.18.0 metadata still pulls
+# fury<2/dipy from source on Windows, while this revision has the corrected
+# dependency set.
+TotalSegmentator @ git+https://github.com/wasserth/TotalSegmentator.git@a0d35d5996a9c096caed4184cededdbf2ede5268

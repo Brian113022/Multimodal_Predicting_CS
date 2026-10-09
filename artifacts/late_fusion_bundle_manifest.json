@@ -1,0 +1,159 @@
+{
+  "bundle_type": "fusion_subsidence_full_late_fusion",
+  "bundle_version": 2,
+  "created_at_utc": "2026-09-13T16:26:57.675012+00:00",
+  "artifact_path": "D:\\A2_Multimodal_predicting_CS\\SCRIPT_official\\artifacts\\2026-09-13_ml9\\late_fusion_bundle.pkl",
+  "positive_class": 1,
+  "base_models": {
+    "Clinical": {
+      "model_name": "LightGBM",
+      "features": [
+        "Clinical___Level",
+        "Clinical___Age",
+        "Clinical___Gender",
+        "Clinical___BMI",
+        "Clinical___Tobacco",
+        "Clinical___Drink",
+        "Clinical___Diabetes",
+        "Clinical___AI_CCI",
+        "Clinical___Pre_IH",
+        "Clinical___Pos_lat",
+        "Clinical___Pos_AP",
+        "Clinical___Post_SA",
+        "Clinical___Cage_height_mm",
+        "Clinical___Cage_type",
+        "Clinical___DBM",
+        "Clinical___Condition"
+      ],
+      "decision_threshold": 0.4462500900642858
+    },
+    "Muscle": {
+      "model_name": "SVM",
+      "features": [
+        "Muscle___aVol_ES_L",
+        "Muscle___tFat_ES_L",
+        "Muscle___aVol_ES_R",
+        "Muscle___tFat_ES_R",
+        "Muscle___aVol_MF_L",
+        "Muscle___tFat_MF_L",
+        "Muscle___aVol_MF_R",
+        "Muscle___tFat_MF_R",
+        "Muscle___aVol_PM_L",
+        "Muscle___tFat_PM_L",
+        "Muscle___aVol_PM_R",
+        "Muscle___tFat_PM_R",
+        "Muscle___aVol_QL_L",
+        "Muscle___tFat_QL_L",
+        "Muscle___aVol_QL_R",
+        "Muscle___tFat_QL_R"
+      ],
+      "decision_threshold": 0.49494143046927913
+    },
+    "Radiomics": {
+      "model_name": "KNN",
+      "features": [
+        "Radiomics___MRI_original_shape_MajorAxisLength",
+        "Radiomics___MRI_gradient_firstorder_Kurtosis",
+        "Radiomics___MRI_gradient_glszm_ZoneEntropy",
+        "Radiomics___MRI_lbp-3D-m2_firstorder_Median",
+        "Radiomics___MRI_logarithm_ngtdm_Strength",
+        "Radiomics___MRI_squareroot_glcm_Contrast",
+        "Radiomics___MRI_wavelet-LHL_firstorder_Median",
+        "Radiomics___MRI_wavelet-HHL_firstorder_Skewness"
+      ],
+      "decision_threshold": 0.5797625847569308
+    }
+  },
+  "late_fusion": {
+    "model_name": "RF",
+    "features": [
+      "Clinical_Probability",
+      "Muscle_Probability",
+      "Radiomics_Probability"
+    ],
+    "decision_threshold": 0.5371521112880674
+  },
+  "routing_models": {
+    "Clinical": {
+      "dataset": "Clinical",
+      "modalities": [
+        "Clinical"
+      ],
+      "strategy": "direct",
+      "model_name": "LightGBM",
+      "features": [
+        "Clinical___Level",
+        "Clinical___Age",
+        "Clinical___Gender",
+        "Clinical___BMI",
+        "Clinical___Tobacco",
+        "Clinical___Drink",
+        "Clinical___Diabetes",
+        "Clinical___AI_CCI",
+        "Clinical___Pre_IH",
+        "Clinical___Pos_lat",
+        "Clinical___Pos_AP",
+        "Clinical___Post_SA",
+        "Clinical___Cage_height_mm",
+        "Clinical___Cage_type",
+        "Clinical___DBM",
+        "Clinical___Condition"
+      ],
+      "decision_threshold": 0.4462500900642858,
+      "selection_cv_auc": 0.8232314146400833
+    },
+    "Clinical+Muscle": {
+      "dataset": "Late_Fusion_Clinical_Muscle",
+      "modalities": [
+        "Clinical",
+        "Muscle"
+      ],
+      "strategy": "late_fusion",
+      "model_name": "LightGBM",
+      "features": [
+        "Clinical_Probability",
+        "Muscle_Probability"
+      ],
+      "decision_threshold": 0.42864206520049836,
+      "selection_cv_auc": 0.8349514304622664
+    },
+    "Clinical+Radiomics": {
+      "dataset": "Late_Fusion_Clinical_Radiomics",
+      "modalities": [
+        "Clinical",
+        "Radiomics"
+      ],
+      "strategy": "late_fusion",
+      "model_name": "LR",
+      "features": [
+        "Clinical_Probability",
+        "Radiomics_Probability"
+      ],
+      "decision_threshold": 0.5032504882786755,
+      "selection_cv_auc": 0.8283237360636739
+    },
+    "Clinical+Muscle+Radiomics": {
+      "dataset": "Late_Fusion",
+      "modalities": [
+        "Clinical",
+        "Muscle",
+        "Radiomics"
+      ],
+      "strategy": "late_fusion",
+      "model_name": "RF",
+      "features": [
+        "Clinical_Probability",
+        "Muscle_Probability",
+        "Radiomics_Probability"
+      ],
+      "decision_threshold": 0.5371521112880674,
+      "selection_cv_auc": 0.8271326350273718
+    }
+  },
+  "route_artifacts": {
+    "Clinical": "D:\\A2_Multimodal_predicting_CS\\SCRIPT_official\\artifacts\\2026-09-13_ml9\\clinical.pkl",
+    "Clinical+Muscle": "D:\\A2_Multimodal_predicting_CS\\SCRIPT_official\\artifacts\\2026-09-13_ml9\\clinical_muscle.pkl",
+    "Clinical+Radiomics": "D:\\A2_Multimodal_predicting_CS\\SCRIPT_official\\artifacts\\2026-09-13_ml9\\clinical_radiomics.pkl",
+    "Clinical+Muscle+Radiomics": "D:\\A2_Multimodal_predicting_CS\\SCRIPT_official\\artifacts\\2026-09-13_ml9\\late_fusion.pkl"
+  }
+}

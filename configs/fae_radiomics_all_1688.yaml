@@ -1,0 +1,50 @@
+# FAE/PyRadiomics configuration matching the 1,688-column MRI feature family
+# used by data/processed/radiomics_features_new.csv.
+#
+# Checked on 2026-09-19 by re-extracting three development patients with
+# webapp/extractors/fae_worker.py: all 1,688 values match the stored CSV to
+# its rounding (absolute difference <= 5e-8).
+# Without normalize and the 1 mm resampling no intensity feature matched.
+#
+# - LoG sigma is the integer 1. PyRadiomics names the filtered image after
+#   str(sigma), so 1.0 would write log-sigma-1-0-mm-3D columns instead of the
+#   log-sigma-1-mm-3D columns the models were trained on.
+# - Keys are alphabetical because FAE writes its YAML with yaml.dump, which
+#   sorts them. PyRadiomics runs image types and classes in that order, so the
+#   features come out in the column order of the training CSV.
+# - An earlier external CSV (external_validation_WF/radiomics_features_EXT_new.csv)
+#   was extracted with normalizeScale 100: its scale-dependent first-order
+#   features were 100x (Variance, Energy, TotalEnergy 10,000x) and every
+#   Exponential and Logarithm feature differed. On 2026-09-19 the external
+#   cohort was re-extracted with this file, and that corrected CSV is the one
+#   the published external results use.
+imageType:
+  Exponential: {}
+  Gradient: {}
+  LBP3D: {}
+  LoG:
+    sigma: [1]
+  Logarithm: {}
+  Original: {}
+  Square: {}
+  SquareRoot: {}
+  Wavelet: {}
+
+featureClass:
+  firstorder: null
+  glcm: null
+  gldm: null
+  glrlm: null
+  glszm: null
+  ngtdm: null
+  shape: null
+
+setting:
+  additionalInfo: false
+  binCount: 16
+  geometryTolerance: 1.0e-6
+  interpolator: sitkBSpline
+  label: 1
+  normalize: true
+  normalizeScale: 1
+  resampledPixelSpacing: [1, 1, 1]
