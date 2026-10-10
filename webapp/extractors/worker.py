@@ -1,8 +1,8 @@
 """Run an extractor helper script in the environment that owns its dependencies.
 
-MuscleMap and PyRadiomics each live in their own conda environment, so both
-adapters hand a JSON job to a helper script started with that environment's
-interpreter and read back stage events and a result, one JSON object per line.
+Adapters hand a JSON job to a helper script and read back stage events and a
+result, one JSON object per line. Helpers can use the web app's interpreter or
+a configured interpreter with compatible imaging dependencies.
 """
 
 import json

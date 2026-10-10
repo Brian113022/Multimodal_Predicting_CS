@@ -25,7 +25,8 @@ python-gdcm>=3.0
 # numpy<2 - installing it would downgrade the numpy 2.x the ML pipeline
 # uses. Only webapp/extractors/fae_worker.py imports it, and that worker
 # runs under RADIOMICS_PYTHON, which webapp/config.py finds on its own.
-# The working install is pyradiomics 3.1.0 on Python 3.9 (conda env radiomm).
+# The previously tested install is pyradiomics 3.1.0 on Python 3.9 with numpy<2.
+# Conda is not required; RADIOMICS_PYTHON may point to a pip/venv interpreter.
 SimpleITK>=2.4,<3
 PyWavelets>=1.5
 scikit-image>=0.22

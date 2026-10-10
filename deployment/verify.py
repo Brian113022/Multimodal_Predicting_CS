@@ -70,5 +70,5 @@ def verify(config):
     runtime = read_json("runtime.json")
     if alive(runtime) and runtime.get("metrics_port"):
         report("Connector readiness local", "PASS" if readiness(runtime["metrics_port"]) else "PENDING")
-    print("Restart: chưa tự thực hiện khi có request; dùng restart rồi verify. Không có API ghi trong restart.")
+    print("Kiểm tra hoàn tất.")
     return 1 if "FAIL" in results else 2 if "PENDING" in results else 0

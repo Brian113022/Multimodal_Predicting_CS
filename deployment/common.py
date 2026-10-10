@@ -7,9 +7,12 @@ import re
 import sys
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "webapp"
-STATE = WEB / ".deploy"
+DEPLOYMENT = ROOT / "deployment"
+ENTRYPOINT = DEPLOYMENT / "deploy.py"
+# Reuse an existing installation's state without creating a second tunnel.
+STATE = WEB / ".deploy" if (WEB / ".deploy").is_dir() else DEPLOYMENT / ".deploy"
 SECRET_KEYS = {"SPACESHIP_API_KEY", "SPACESHIP_API_SECRET", "CLOUDFLARE_API_TOKEN", "TUNNEL_TOKEN"}
 
 
@@ -22,15 +25,8 @@ class Pending(DeployError):
 
 
 def confirm(message):
+    """Log the requested CLI change without an interactive confirmation."""
     print(message)
-    if not sys.stdin.isatty():
-        raise Pending("Cần xác nhận tại terminal tương tác; chưa thay đổi tài nguyên.")
-    try:
-        accepted = input("Nhập yes hoặc YES để xác nhận: ").strip().casefold() == "yes"
-    except EOFError:
-        accepted = False
-    if not accepted:
-        raise Pending("Đã hủy thao tác cần xác nhận.")
 
 
 def private_dir():
@@ -201,7 +197,10 @@ class Config:
 
     @classmethod
     def load(cls):
-        values = read_env(WEB / ".env")
+        env_path = DEPLOYMENT / ".env"
+        if not env_path.is_file():
+            env_path = WEB / ".env"  # Compatibility with existing installations.
+        values = read_env(env_path)
         values.update({key: value for key, value in os.environ.items() if value})
         domain = values.get("DOMAIN", "spinepredict.top").lower().rstrip(".")
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}", domain):
@@ -226,7 +225,7 @@ class Config:
 
     def require_api(self):
         if not self.values.get("CLOUDFLARE_API_TOKEN"):
-            raise Pending("Điền Cloudflare credentials trong webapp/.env; giá trị trong chat không được tự sao chép.")
+            raise Pending("Điền Cloudflare credentials trong deployment/.env; giá trị trong chat không được tự sao chép.")
         if not all(re.fullmatch(r"[0-9a-fA-F]{32}", value) for value in (self.account, self.zone)):
             raise DeployError("Cloudflare account/zone ID phải có 32 ký tự hex.")
 

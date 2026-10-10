@@ -39,3 +39,8 @@ nnunet_results/
 Thumbs.db
 desktop.ini
 ~$*
+.env
+
+# Deployment credentials, process state, downloaded binaries and logs
+deployment/.deploy/
+webapp/.deploy/

@@ -5,6 +5,11 @@ from .common import Config, DeployError, Pending
 
 
 def main(argv=None):
+    # Windows redirected output may default to cp1252, which cannot print
+    # Vietnamese diagnostics (including argparse help).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Native Cloudflare Named Tunnel deployment (Windows/macOS)")
     parser.add_argument("action", nargs="?", default="run", choices=(
         "run", "setup", "start", "stop", "restart", "status", "verify",
@@ -22,18 +27,19 @@ def main(argv=None):
             setup(config, refresh_token=args.refresh_token)
         elif args.action in {"run", "start"}:
             from .setup import require_state, setup
-            from .processes import app_health, cloudflared, port_open, preflight, start
+            from .processes import cloudflared, port_open, preflight, start, stop
             if args.action == "run":
                 # Fail local prerequisites before creating remote resources.
-                cloudflared(config, allow_install=True)
+                cloudflared(config)
                 preflight(config)
-                if port_open(config.port) and not app_health(config):
-                    raise DeployError("Port đã bị chiếm/app unhealthy; chưa setup remote hoặc kill process.")
                 try:
                     require_state(config)
                 except Pending:
                     setup(config)
-            start(config, allow_install=args.action == "run", preflight_done=args.action == "run")
+                stop(config)
+                if port_open(config.port):
+                    raise DeployError("Port còn bị app ngoài deployment chiếm; chưa khởi chạy app mới. Dừng app đó trước.")
+            start(config, preflight_done=args.action == "run")
             from .verify import verify
             return verify(config)
         elif args.action == "stop":

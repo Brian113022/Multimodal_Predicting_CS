@@ -1,27 +1,24 @@
 """A single detached supervisor owns native processes; normal start makes no API writes."""
 import ctypes
 import hashlib
-import io
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-import platform
 import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
-import tarfile
 import threading
 import time
 import uuid
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from .common import ROOT, WEB, STATE, SECRET_KEYS, Config, DeployError, FileLock, Pending, atomic_write, confirm, load_token, private_dir, read_json, write_json
+from .common import ROOT, ENTRYPOINT, STATE, SECRET_KEYS, Config, DeployError, FileLock, Pending, load_token, private_dir, read_json, write_json
 from .setup import require_state
 from .transport import network_reason, urlopen
 
@@ -136,68 +133,76 @@ def port_open(port):
 
 
 def preflight(config):
-    code = "import sys; assert sys.version_info >= (3,10); from webapp.app import app; sys.exit(0 if app.extensions['late_fusion_predictor'] is not None else 1)"
+    code = """import json, sys
+try:
+    if sys.version_info < (3, 10):
+        raise RuntimeError('Python >= 3.10 required')
+    from webapp.app import app
+    if app.extensions['late_fusion_predictor'] is None:
+        raise RuntimeError(app.extensions.get('model_load_error') or 'Model bundle unavailable')
+except Exception as exc:
+    print('DEPLOY_PREFLIGHT_ERROR=' + json.dumps({'type': type(exc).__name__, 'module': getattr(exc, 'name', None), 'message': str(exc)}))
+    sys.exit(1)
+"""
     try:
         result = subprocess.run([config.python, "-c", code], cwd=ROOT, env=config.child_env(), capture_output=True, timeout=90)
     except (OSError, subprocess.TimeoutExpired):
         raise DeployError("Không kiểm tra được interpreter; kiểm tra Python/dependencies/model tại máy này.") from None
     if result.returncode:
-        raise DeployError("Python preflight thất bại: kiểm tra dependencies và bundle bằng interpreter web hiện tại; không tự pip install/train.")
+        detail = "Không import/load được app; kiểm tra Python và model bundle."
+        for line in result.stdout.decode("utf-8", errors="replace").splitlines():
+            if line.startswith("DEPLOY_PREFLIGHT_ERROR="):
+                try:
+                    failure = json.loads(line.split("=", 1)[1])
+                    if failure.get("type") == "ModuleNotFoundError":
+                        detail = "Thiếu thư viện Python: " + str(failure.get("module"))
+                    else:
+                        detail = str(failure.get("type")) + ": " + str(failure.get("message"))
+                except (ValueError, AttributeError):
+                    pass
+        for key in SECRET_KEYS:
+            secret = config.values.get(key)
+            if secret:
+                detail = detail.replace(secret, "[REDACTED]")
+        detail = detail.replace("\n", " ").replace("\r", " ")[:600]
+        raise DeployError(f"Python preflight thất bại ({config.python}): {detail}")
     print("PASS: Python và model import/load; MRI workers/SHAP thực tế vẫn cần nghiệm thu riêng.")
 
 
-def cloudflared(config, allow_install=False):
+def cloudflared(config):
+    """Use a shared installation; never download a project-local binary."""
     configured = config.values.get("CLOUDFLARED_PATH")
     binary = str(Path(configured).expanduser().resolve()) if configured else shutil.which("cloudflared")
-    local = STATE / ("cloudflared.exe" if os.name == "nt" else "cloudflared")
-    if not binary and local.is_file():
-        binary = str(local)
-    if binary:
-        try:
-            result = subprocess.run([binary, "version"], capture_output=True, timeout=10)
-            if result.returncode == 0 and b"cloudflared version" in result.stdout + result.stderr:
-                return binary
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        raise DeployError("CLOUDFLARED_PATH/binary không hợp lệ; không tự ghi đè chương trình đang cài.")
-    print("cloudflared chưa có. Có thể cài thủ công bằng winget (Windows) hoặc brew install cloudflared (macOS).")
-    if not allow_install:
-        raise Pending("Cài cloudflared hoặc chạy run tại terminal để xác nhận tải binary local.")
-    confirm("Tải cloudflared 2026.10.0 chính thức vào webapp/.deploy, kiểm SHA256; không cài global hoặc đổi hệ thống?")
-    machine = platform.machine().lower()
-    if sys.platform == "darwin":
-        arch = "arm64" if machine in {"arm64", "aarch64"} else "amd64" if machine in {"x86_64", "amd64"} else None
-        asset = f"cloudflared-darwin-{arch}.tgz"
-    elif os.name == "nt" and machine in {"amd64", "x86_64"}:
-        asset = "cloudflared-windows-amd64.exe"
-    else:
-        raise Pending("Platform/architecture chưa có bộ tải được kiểm chứng; cài cloudflared thủ công.")
-    if sys.platform == "darwin" and arch is None:
-        raise Pending("Architecture chưa hỗ trợ; cài cloudflared thủ công.")
+    # Existing terminals may still have the PATH from before installation.
+    if not binary and os.name == "nt":
+        for variable, subdirectory in (
+            ("LOCALAPPDATA", "Programs/cloudflared"),
+            ("ProgramFiles", "cloudflared"),
+            ("ProgramFiles(x86)", "cloudflared"),
+        ):
+            base = os.environ.get(variable)
+            if not base:
+                continue
+            for suffix in ("cloudflared.exe", "bin/cloudflared.exe"):
+                candidate = Path(base) / subdirectory / suffix
+                if candidate.is_file():
+                    binary = str(candidate)
+                    break
+            if binary:
+                break
+    if not binary:
+        raise Pending(
+            "Ch?a t?m th?y cloudflared global. C?i b?ng winget install --id Cloudflare.cloudflared "
+            "--exact (Windows) ho?c brew install cloudflared (macOS), r?i m? terminal m?i. "
+            "C? th? ??t CLOUDFLARED_PATH t?i b?n ?? c?i; kh?ng t? t?i v?o d? ?n."
+        )
     try:
-        with urlopen(Request("https://api.github.com/repos/cloudflare/cloudflared/releases/tags/2026.10.0",
-                             headers={"Accept": "application/vnd.github+json"}), timeout=20, values=config.values) as response:
-            release = json.load(response)
-        checksum = re.search(re.escape(asset) + r":\s*([0-9a-fA-F]{64})", release.get("body", ""))
-        if not checksum:
-            raise DeployError("Không có SHA256 chính thức; chưa cài binary.")
-        url = "https://github.com/cloudflare/cloudflared/releases/download/2026.10.0/" + asset
-        with urlopen(url, timeout=30, values=config.values) as response:
-            data = response.read(100 * 1024 * 1024 + 1)
-        if len(data) > 100 * 1024 * 1024 or hashlib.sha256(data).hexdigest().lower() != checksum[1].lower():
-            raise DeployError("Checksum binary không khớp; chưa cài/chạy.")
-        if asset.endswith(".tgz"):
-            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
-                members = [m for m in archive.getmembers() if m.isfile() and Path(m.name).name == "cloudflared"]
-                if len(members) != 1:
-                    raise DeployError("Archive binary không hợp lệ.")
-                data = archive.extractfile(members[0]).read()
-        atomic_write(local, data)
-        if os.name != "nt":
-            local.chmod(0o700)
-        return str(local)
-    except (OSError, ValueError, tarfile.TarError):
-        raise Pending("Không tải được binary; cài cloudflared thủ công từ Cloudflare rồi chạy lại.") from None
+        result = subprocess.run([binary, "version"], capture_output=True, timeout=10)
+        if result.returncode == 0 and b"cloudflared version" in result.stdout + result.stderr:
+            return binary
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    raise DeployError("CLOUDFLARED_PATH/binary kh?ng h?p l?; ki?m tra b?n cloudflared ?? c?i.")
 
 
 def logger(config, token):
@@ -242,9 +247,14 @@ def spawn(command, env, log, kind):
 
 
 def supervise(config, binary):
+    # An explicit stop also prevents an OS startup task from reviving the app.
+    if (STATE / "stopped.json").is_file():
+        return
     state = require_state(config)
     token = load_token(state["tunnel_id"])
     with FileLock("runtime.lock"):
+        if (STATE / "stopped.json").is_file():
+            return
         old = read_json("runtime.json")
         # Clean only saved owned children from a crashed supervisor, never an external app.
         for key in ("tunnel", "app"):
@@ -273,6 +283,8 @@ def supervise(config, binary):
                 runtime["app_external"] = True
                 log.info("Reuse healthy external Python app; stop/restart will not kill it.")
             while running:
+                if (STATE / "stopped.json").is_file():
+                    break
                 if stop_file.is_file() and read_json("stop.json").get("nonce") == runtime["nonce"]:
                     break
                 now = time.monotonic()
@@ -317,23 +329,24 @@ def supervise(config, binary):
             log.info("Supervisor stopped; retained model/data/output files unchanged.")
 
 
-def start(config, allow_install=False, preflight_done=False):
+def start(config, preflight_done=False):
     with FileLock("command.lock"):
         require_state(config)  # No setup/API mutations inside start or autostart.
         runtime = read_json("runtime.json")
         if alive(runtime) and not runtime.get("stopped"):
             print("Supervisor đã chạy; không tạo tiến trình trùng.")
             return
-        binary = cloudflared(config, allow_install)
+        binary = cloudflared(config)
         if not preflight_done:
             preflight(config)
         if port_open(config.port) and not app_health(config):
             raise DeployError("Port đang bị chiếm/app unhealthy. Không tự kill service hiện có.")
         options = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
         from .autostart import launch_registered
+        (STATE / "stopped.json").unlink(missing_ok=True)
         registered = launch_registered()
         supervisor = None if registered else subprocess.Popen(
-            [config.python, str(WEB / "deploy.py"), "_supervise", "--binary", binary],
+            [config.python, str(ENTRYPOINT), "_supervise", "--binary", binary],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, **options)
         for _ in range(50):
@@ -344,28 +357,30 @@ def start(config, allow_install=False, preflight_done=False):
                 print("Public URL dự kiến: https://" + config.domain + " (dùng verify để xác nhận HTTPS/propagation).")
                 return
             if supervisor is not None and supervisor.poll() is not None:
-                raise DeployError("Supervisor thoát; kiểm tra webapp/.deploy/process.log và port/config.")
+                raise DeployError(f"Supervisor thoát; kiểm tra {STATE / 'process.log'} và port/config.")
             time.sleep(1)
         raise Pending("Supervisor đang khởi động; dùng status/verify, không start app/tunnel khác.")
 
 
 def stop(config):
     with FileLock("command.lock"):
+        write_json("stopped.json", {"stopped": True})
         runtime = read_json("runtime.json")
         if alive(runtime) and not runtime.get("stopped"):
             write_json("stop.json", {"nonce": runtime["nonce"]})
             for _ in range(20):
-                if not alive(runtime) or read_json("runtime.json").get("stopped"):
+                if not alive(runtime):
                     break
                 time.sleep(1)
             else:
-                for key in ("tunnel", "app"):
-                    terminate(runtime.get(key, {}))
+                current = read_json("runtime.json")
                 terminate(runtime)
+                for key in ("tunnel", "app"):
+                    terminate(current.get(key, {}))
         else:
             for key in ("tunnel", "app"):
                 terminate(runtime.get(key, {}))
-        print("Đã stop các process được quản lý; app bên ngoài và kết quả đã lưu được giữ nguyên.")
+        print("Đã dừng deployment; không tự bật lại cho tới khi chạy run/start. App ngoài deployment không bị kill.")
 
 
 def status(config):

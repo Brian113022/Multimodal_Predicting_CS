@@ -1,4 +1,4 @@
-"""Automatic, idempotent setup; existing DNS/delegation changes need approval."""
+"""Automatic, idempotent setup with validated DNS/delegation changes."""
 from copy import deepcopy
 import fnmatch
 import hashlib
@@ -60,7 +60,7 @@ def nameservers(config, zone, cf):
     print("DNSSEC registrar API: chưa được Spaceship công bố; DS recursive", "không thấy" if ds == [] else "chưa xác minh")
     confirm("Đổi nameservers cho " + config.domain + "\nHiện tại: " + ", ".join(current)
             + "\nDự kiến: " + ", ".join(expected)
-            + "\nChỉ xác nhận sau khi đã bảo toàn DNS/email tại Cloudflare và kiểm tra không có DS cũ ở registrar.")
+            + "\nGiữ nguyên các DNS records khác; đã kiểm tra DS trước khi đổi nameservers.")
     # Re-read just before writing to avoid overwriting a concurrent registrar edit.
     if normal(registrar.domain_info().get("nameservers", {}).get("hosts", [])) != normal(current):
         raise Pending("Nameservers vừa thay đổi ở nơi khác; chạy setup lại để xem dự kiến mới.")

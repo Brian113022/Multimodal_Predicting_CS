@@ -1,4 +1,4 @@
-"""Opt-in user startup. System configuration changes always require confirmation."""
+"""User startup registration, performed only by explicit CLI commands."""
 import hashlib
 import os
 from pathlib import Path
@@ -7,7 +7,7 @@ import subprocess
 import sys
 from xml.etree import ElementTree as ET
 
-from .common import ROOT, WEB, STATE, DeployError, Pending, confirm, read_json, write_json, atomic_write
+from .common import ROOT, WEB, STATE, ENTRYPOINT, DeployError, Pending, confirm, read_json, write_json, atomic_write
 from .processes import alive, cloudflared
 from .setup import require_state
 
@@ -15,7 +15,7 @@ from .setup import require_state
 def checked(command):
     result = subprocess.run(command, capture_output=True)
     if result.returncode:
-        raise DeployError("OS không chấp nhận thao tác auto-start; kiểm tra quyền/policy và hướng dẫn DEPLOYMENT.md.")
+        raise DeployError("OS không chấp nhận thao tác auto-start; kiểm tra quyền/policy và hướng dẫn deployment/README.md.")
 
 
 def install(config):
@@ -61,7 +61,7 @@ def install(config):
         child(restart, "Count", "999")
         action = child(child(root, "Actions", Context="Author"), "Exec")
         child(action, "Command", config.python)
-        child(action, "Arguments", subprocess.list2cmdline([str(WEB / "deploy.py"), "_supervise", "--binary", binary]))
+        child(action, "Arguments", subprocess.list2cmdline([str(ENTRYPOINT), "_supervise", "--binary", binary]))
         child(action, "WorkingDirectory", str(ROOT))
         xml = STATE / "autostart.xml"
         atomic_write(xml, ET.tostring(root, encoding="utf-16", xml_declaration=True))
@@ -73,7 +73,7 @@ def install(config):
         if path.exists():
             raise Pending("LaunchAgent đã tồn tại; không ghi đè file không được quản lý.")
         confirm("Cài macOS LaunchAgent cho user hiện tại, chạy sau đăng nhập và phục hồi supervisor khi crash?")
-        value = {"Label": label, "ProgramArguments": [config.python, str(WEB / "deploy.py"), "_supervise", "--binary", binary],
+        value = {"Label": label, "ProgramArguments": [config.python, str(ENTRYPOINT), "_supervise", "--binary", binary],
                  "WorkingDirectory": str(ROOT), "RunAtLoad": True, "KeepAlive": {"SuccessfulExit": False},
                  "ThrottleInterval": 15}
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +117,10 @@ def uninstall(config):
         if path.exists():
             with path.open("rb") as stream:
                 value = plistlib.load(stream)
-            if value.get("Label") != cached["label"] or str(WEB / "deploy.py") not in value.get("ProgramArguments", []):
+            if value.get("Label") != cached["label"] or not any(
+                str(entry) in value.get("ProgramArguments", [])
+                for entry in (ENTRYPOINT, WEB / "deploy.py")
+            ):
                 raise DeployError("LaunchAgent đã thay đổi; không xóa file khác.")
         # Already-unloaded is harmless; remove only our verified local plist.
         subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/{cached['label']}"], capture_output=True)
