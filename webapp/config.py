@@ -3,10 +3,21 @@
 import os
 import shutil
 import sys
+import sysconfig
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _find_dcm2niix_command():
+    """Prefer the converter installed with this Python, even off PATH."""
+    name = "dcm2niix.exe" if os.name == "nt" else "dcm2niix"
+    for directory in (Path(sysconfig.get_path("scripts")), Path(sys.executable).parent):
+        candidate = directory / name
+        if candidate.is_file():
+            return str(candidate)
+    return shutil.which("dcm2niix") or "dcm2niix"
 
 # MuscleMap normally lives in its own conda environment, whose Scripts/bin
 # directory is not on PATH for the interpreter running this web application.
@@ -146,11 +157,7 @@ class Config:
     )
     MAX_FORM_PARTS = int(os.environ.get("MAX_DICOM_FILES", 12000)) + 10
     MAX_DICOM_FILES = int(os.environ.get("MAX_DICOM_FILES", 12000))
-    DCM2NIIX_COMMAND = os.environ.get("DCM2NIIX_COMMAND") or (
-        str(Path(sys.executable).parent / ("dcm2niix.exe" if os.name == "nt" else "dcm2niix"))
-        if (Path(sys.executable).parent / ("dcm2niix.exe" if os.name == "nt" else "dcm2niix")).is_file()
-        else "dcm2niix"
-    )
+    DCM2NIIX_COMMAND = os.environ.get("DCM2NIIX_COMMAND") or _find_dcm2niix_command()
     DICOM_CONVERSION_TIMEOUT_SECONDS = int(os.environ.get("DICOM_CONVERSION_TIMEOUT_SECONDS", 300))
     DICOM_T2_TR_MIN_MS = float(os.environ.get("DICOM_T2_TR_MIN_MS", 1500))
     DICOM_T2_TE_MIN_MS = float(os.environ.get("DICOM_T2_TE_MIN_MS", 60))

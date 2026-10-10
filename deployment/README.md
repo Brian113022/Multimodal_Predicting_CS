@@ -30,8 +30,7 @@ configured DNS/tunnel changes automatically after validating the resources.
 cloudflared must be installed outside this project, available on `PATH` or through
 `CLOUDFLARED_PATH`. Deployment never downloads a local copy. On Windows it also
 checks standard shared installation folders when the current terminal has an
-outdated `PATH`. Install once with `winget install --id Cloudflare.cloudflared
---exact` (Windows) or `brew install cloudflared` (macOS).
+outdated `PATH`. Install once with `winget install --id Cloudflare.cloudflared --exact` (Windows) or `brew install cloudflared` (macOS).
 
 For local use without a public tunnel, run `python -m webapp.app` directly.
 This direct command does not start the deployment supervisor.

@@ -593,8 +593,9 @@ def main() -> int:
             "status": "failed",
             "message": (
                 f"TotalSegmentator or one of its dependencies is missing: {exc}. "
-                "Install it with 'pip install TotalSegmentator' and point "
-                "TOTALSEGMENTATOR_PYTHON at that environment."
+                "Install the project dependencies with "
+                "'python -m pip install -r requirements.txt' using the same "
+                "Python as training and the web app."
             ),
         }
     except Exception as exc:
