@@ -1,9 +1,11 @@
 """Geometry-first, conservative identification of conventional spine MR images.
 
-TR/TE limits below are configurable protocol heuristics, not universal MRI
+TR/TE/TI limits below are configurable protocol heuristics, not universal MRI
 definitions. Free-text names corroborate timing; they never determine plane
 or suffice to accept a target. Inversion-prepared images are excluded from
-both targets, including STIR regardless of its TR/TE or description.
+both targets, including STIR regardless of its TR/TE or description, with one
+exception: sagittal spin-echo T1 FLAIR (long TI, short TE), which is the
+sagittal T1 protocol of most development radiomics patients.
 """
 
 from dataclasses import dataclass
@@ -19,6 +21,11 @@ class ClassificationRules:
     t1_tr_max: float = 1000.0
     t1_te_max: float = 30.0
     require_axial_t2_view: bool = False
+    # T1 FLAIR: TI near the CSF null point (STIR uses ~100-250 ms, T2 FLAIR
+    # ~2000+ ms) and a TR that is long only because of the inversion.
+    t1_flair_tr_max: float = 3500.0
+    t1_flair_ti_min: float = 600.0
+    t1_flair_ti_max: float = 1200.0
 
 
 def _value(source, name, default=None):
@@ -138,7 +145,17 @@ def classify_metadata(metadata, rules=None):
         reasons.append("invalid_inversion_time")
         return report
     ir_name = bool(re.search(r"TIRM|\bTIR\b|INVERSION|\bIR[ _-]*(?:FSE|TSE)\b", text))
-    if "IR" in scanning or ir_name or _text(_value(metadata, "InversionRecovery")) in {"YES", "Y", "TRUE"} or any(ti > 0 for ti in inversion_times):
+    pulse = _text(_value(metadata, "EchoPulseSequence"))
+    inversion = "IR" in scanning or ir_name or _text(_value(metadata, "InversionRecovery")) in {"YES", "Y", "TRUE"} or any(ti > 0 for ti in inversion_times)
+    # Only a sagittal spin-echo inversion whose TI fits T1 FLAIR continues; its
+    # TR/TE are still checked below. STIR and T2 FLAIR fall outside the TI range.
+    t1_flair = (
+        inversion and plane == "SAGITTAL" and bool(inversion_times)
+        and "GR" not in scanning and pulse != "GRADIENT"
+        and all(rules.t1_flair_ti_min <= ti <= rules.t1_flair_ti_max for ti in inversion_times)
+    )
+    report["t1_flair"] = t1_flair
+    if inversion and not t1_flair:
         reasons.append("inversion_recovery_excluded")
         return report
     # Some vendors (e.g. Philips with CLEAR/filtering) label ordinary acquired
@@ -157,7 +174,6 @@ def classify_metadata(metadata, rules=None):
     if tr is None or te is None or tr <= 0 or te <= 0:
         reasons.append("missing_or_invalid_tr_te")
         return report
-    pulse = _text(_value(metadata, "EchoPulseSequence"))
     if plane == "AXIAL":
         if "GR" in scanning or pulse == "GRADIENT":
             reasons.append("gradient_echo_not_conventional_t2")
@@ -176,9 +192,12 @@ def classify_metadata(metadata, rules=None):
         else:
             reasons.append("timing_not_conventional_t2")
     elif plane == "SAGITTAL":
-        if tr <= rules.t1_tr_max and te <= rules.t1_te_max:
+        if tr <= (rules.t1_flair_tr_max if t1_flair else rules.t1_tr_max) and te <= rules.t1_te_max:
             report["classification"] = "SAGITTAL_T1"
-            reasons.extend(["sagittal_geometry", "short_tr", "short_te", "no_inversion_recovery"])
+            if t1_flair:
+                reasons.extend(["sagittal_geometry", "t1_flair_inversion_time", "t1_flair_tr", "short_te"])
+            else:
+                reasons.extend(["sagittal_geometry", "short_tr", "short_te", "no_inversion_recovery"])
             if "T1" in text:
                 reasons.append("supporting_t1_name")
             if scanning or pulse:

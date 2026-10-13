@@ -199,10 +199,19 @@ def prepare_dicom_events(
                 summaries[index]["classification"] = None
                 summaries[index]["reasons"].append("non_view_axial_t2_not_used_view_present")
         axial = view_axial
+    # Conventional sagittal T1 is preferred; T1 FLAIR is used only without it,
+    # so a case holding both still yields one unambiguous Radiomics series.
+    conventional_sagittal = [index for index in sagittal if not any(report.get("t1_flair") for report in series[index].reports)]
+    if conventional_sagittal:
+        for index in sagittal:
+            if index not in conventional_sagittal:
+                summaries[index]["classification"] = None
+                summaries[index]["reasons"].append("t1_flair_not_used_conventional_t1_present")
+        sagittal = conventional_sagittal
     if not axial:
         warnings.append("No axial T2 series with valid orientation and T2 timing was found.")
     if not sagittal:
-        warnings.append("No sagittal T1 series with valid orientation and non-inversion T1 timing was found; STIR is excluded.")
+        warnings.append("No sagittal T1 or T1 FLAIR series with valid orientation and timing was found; STIR is excluded.")
     elif len(sagittal) > 1:
         warnings.append("Multiple sagittal T1 series match. Radiomics requires one unambiguous series; select only the files of the intended series.")
         sagittal = []

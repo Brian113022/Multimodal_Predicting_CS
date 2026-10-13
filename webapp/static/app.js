@@ -1061,7 +1061,7 @@ function renderSavedDicomSeries(saved) {
   list.className = "mb-0 mt-2";
   (saved.selected || []).forEach((series) => {
     const item = document.createElement("li");
-    const name = series.modality === "Muscle" ? "Axial T2 VIEW" : "Sagittal T1 (non-STIR)";
+    const name = series.modality === "Muscle" ? "Axial T2 VIEW" : "Sagittal T1 / T1 FLAIR (non-STIR)";
     item.textContent = name + " · " + (series.description || series.protocol || "Unnamed series") +
       " · " + (series.dicom_files || []).length + " source DICOM files" +
       (series.status === "converted" ? "" : " · Conversion failed");

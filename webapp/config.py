@@ -10,6 +10,23 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _local_setting(name, default):
+    """Environment first, then the git-ignored deployment/.env, so local paths
+    stay out of the repository even when the app is started without deploy.py."""
+    if os.environ.get(name):
+        return os.environ[name]
+    try:
+        lines = (PROJECT_ROOT / "deployment" / ".env").read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return default
+    for line in lines:
+        key, separator, value = line.strip().removeprefix("export ").partition("=")
+        if separator and key.strip() == name:
+            value = value.strip()
+            return value[1:-1] if value[:1] in "'\"" and value[-1:] == value[:1] else value or default
+    return default
+
+
 def _find_dcm2niix_command():
     """Prefer the converter installed with this Python, even off PATH."""
     name = "dcm2niix.exe" if os.name == "nt" else "dcm2niix"
@@ -163,6 +180,9 @@ class Config:
     DICOM_T2_TE_MIN_MS = float(os.environ.get("DICOM_T2_TE_MIN_MS", 60))
     DICOM_T1_TR_MAX_MS = float(os.environ.get("DICOM_T1_TR_MAX_MS", 1000))
     DICOM_T1_TE_MAX_MS = float(os.environ.get("DICOM_T1_TE_MAX_MS", 30))
+    DICOM_T1_FLAIR_TR_MAX_MS = float(os.environ.get("DICOM_T1_FLAIR_TR_MAX_MS", 3500))
+    DICOM_T1_FLAIR_TI_MIN_MS = float(os.environ.get("DICOM_T1_FLAIR_TI_MIN_MS", 600))
+    DICOM_T1_FLAIR_TI_MAX_MS = float(os.environ.get("DICOM_T1_FLAIR_TI_MAX_MS", 1200))
     # One retained case contains the selected source DCMs, converted NIfTIs,
     # converter sidecars and a selection manifest. Never served as static files.
     DICOM_SELECTED_SERIES_DIR = Path(
@@ -243,11 +263,11 @@ class Config:
             Path(__file__).resolve().parent / "segmentations_radiomic",
         )
     ).expanduser()
-    # SHAP needs a reference distribution; these are the development tables.
+    # SHAP needs a reference distribution: the development tables with patient
+    # rows. The repo's data/processed holds headers only, so set this path in
+    # deployment/.env.
     SHAP_BACKGROUND_DIR = Path(
-        os.environ.get(
-            "SHAP_BACKGROUND_DIR", PROJECT_ROOT / "data" / "processed",
-        )
+        _local_setting("SHAP_BACKGROUND_DIR", PROJECT_ROOT / "data" / "processed")
     ).expanduser()
     FAE_RADIOMICS_CONFIG = Path(
         os.environ.get(

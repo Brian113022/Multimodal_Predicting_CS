@@ -226,6 +226,9 @@ def create_app(config_object=Config) -> Flask:
             rules=ClassificationRules(
                 config["DICOM_T2_TR_MIN_MS"], config["DICOM_T2_TE_MIN_MS"],
                 config["DICOM_T1_TR_MAX_MS"], config["DICOM_T1_TE_MAX_MS"],
+                t1_flair_tr_max=config["DICOM_T1_FLAIR_TR_MAX_MS"],
+                t1_flair_ti_min=config["DICOM_T1_FLAIR_TI_MIN_MS"],
+                t1_flair_ti_max=config["DICOM_T1_FLAIR_TI_MAX_MS"],
             ),
             muscle_options={
                 "command": config["MUSCLEMAP_COMMAND"], "segmentation_command": config["MUSCLEMAP_SEGMENT_COMMAND"],
